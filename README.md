@@ -4,75 +4,114 @@ Code and data for **"Did the Model Forecast It, or Already Know It? Evaluating L
 Novel Drug-Target Prioritisation with a Temporal Knowledge-Graph Oracle"** (Pui Chung Siu, Yuan Liang,
 Claudia Cabrera, Mani Mudaliar, Arkaitz Zubiaga), NeurIPS 2026 Workshop on AI for Drug Discovery (AI4DD).
 
-Each target–disease hypothesis is a dated event: the pair's first clinical trial. For a disease *d* and a
-decision year *Y* (2021–2026), six open models score candidate targets, with the snapshot year *C = Y − 1*:
+## Overview
 
-| Arm | What accompanies the pair |
+When a language model ranks drug targets for a disease and is scored against past outcomes, a correct
+ranking can mean two things. The model may have forecast the outcome, or the outcome may already have
+been in its training data or in the evidence it was given. We separate the two by treating each
+target–disease hypothesis as a dated event, the pair's first clinical trial, and by controlling the date
+of the evidence the model sees.
+
+**Task.** A query is a disease *d* and a decision year *Y* (2021–2026). The evidence cutoff is the end of
+the previous year, *C = Y − 1*. The positives are the targets whose first trial for *d* falls in *Y*. Each
+positive is matched with ten negatives, drawn from targets that had been trialled by *C* for a disease in
+*d*'s therapeutic area. The negatives use no information from after *Y*, so a target that enters a trial
+for *d* in a later year can still be a negative. Across the six years the test sets hold 1,373 queries,
+6,394 positives and 70,334 scored pairs.
+
+**Models and scoring.** Six open-weight instruction-tuned models (Llama 3.1 8B and 70B, Qwen3 8B and 32B,
+Gemma 2 9B and 27B) are asked whether the target will enter its first trial for *d* in *Y*. Each query's
+candidates are ranked by the model's probability of answering Yes rather than No.
+
+**Conditions.** The conditions differ only in what accompanies the target–disease pair:
+
+| Condition | Information given with the pair |
 |---|---|
-| A0 | identifiers only |
-| A1 | target and disease descriptions, no retrieval |
-| A2 | paths from the dated knowledge graph G[C] |
-| A3 | paths from the newest graph (2026) |
+| A0 | gene symbol and disease name with their identifiers; no descriptions |
+| A1 | target and disease descriptions; no retrieval |
+| A2 | A1 plus up to eight paths (at most three hops) from the knowledge graph as dated at *C*, written G[*C*] |
+| A3 | A1 plus the same kind of paths from the newest graph (2026) |
 
-Positives are the targets whose first trial for *d* falls in *Y*. Negatives are drawn without future
-information (time-aware): ten per positive, from targets already trialled in *d*'s therapeutic area by *C*.
-The sets hold 1,373 queries, 6,394 positives and 70,334 scored pairs.
+The paths come from THBKG, a temporal biomedical knowledge graph that can be queried as it stood at any
+date. A2 − A1 (the knowledge gap) measures what evidence available at the decision adds. A3 − A2 (the
+forecasting gap) measures what evidence from after the decision adds.
 
-## Reproduce the tables and figures (no GPU)
+**Evaluation.** Each condition is compared with *trial history*, a model-free baseline that ranks a
+target by the number of diseases in *d*'s therapeutic area it had been trialled for by *C*. AUROC,
+average precision and MRR are computed per query and averaged over queries, with 95% confidence
+intervals from 2,000 query resamples.
+
+## Main findings
+
+- Without retrieval (A1), the models rank about as well as trial history, both before and after their
+  training cutoffs.
+- Paths from the dated graph (A2) add at most a small gain over A1.
+- Paths from the newest graph (A3) lift five of the six models clearly above trial history. These paths
+  usually contain the answer. For 95–97% of positives they include the pair's own trial edge, which is
+  dated after the decision, against under 1% of negatives
+  ([`data/aggregates/own_edge_disclosure.csv`](data/aggregates/own_edge_disclosure.csv)).
+
+## Reproducing the tables and figures
 
 ```bash
 pip install -r requirements.txt   # Python >= 3.11
-bash analysis/run_all.sh    # writes outputs/tables/*.tex and outputs/figures/*.png
+bash analysis/run_all.sh          # writes outputs/tables/*.tex and outputs/figures/*.png
 ```
 
-Run everything from the repository root. `run_all.sh` unpacks the candidate sets and recomputes the
-per-query metrics from the shipped model outputs. It then writes Tables 1, 3, 4 and 5 and every figure of
-the paper (Figure 1 is a diagram), and prints the numbers quoted in the text. With the versions in
-`requirements.txt`, the table bodies match the paper's LaTeX byte for byte, and the figures match the
-paper's PNG files byte for byte.
+Run both commands from the repository root. `run_all.sh` unpacks the candidate sets, recomputes the
+per-query metrics from the model outputs in `data/predictions/`, and prints the numbers quoted in the
+text. It writes Tables 1, 3, 4 and 5 and every data figure in the paper (Figure 1 is a diagram). With
+the package versions pinned in `requirements.txt`, the table bodies and figure files are byte-identical
+to those in the paper. No model is run in this step.
 
-## What is shipped
+## Repository contents
 
 | Path | Content |
 |---|---|
-| `data/evaluation/ratio10/test_yr<Y>/` | candidate sets (`trial_entry_ratio10.csv.gz`), `stats.json`, `dropped_queries.csv` |
-| `data/predictions/` | every model output used in the paper, in compact form: per candidate the label, p(Yes) and the Yes/No log-probabilities; per disease the runner's MRR |
-| `data/opentargets_min/` | therapeutic areas of the evaluated diseases and the clinical-precedence records of the positive pairs |
-| `data/aggregates/genetic_scores.csv.gz` | genetic-association evidence of each pair at *C* (Table 4) |
-| `data/aggregates/own_edge_disclosure.csv` | share of positives and negatives whose A3 (and A2) paths contain the pair's own trial edge |
+| `src/` | graph snapshots, path retrieval and serialisation, prompts, LLM client, metrics |
+| `scripts/` | the pipeline from graph snapshots to model inference (see below) |
+| `analysis/` | per-query metrics, tables and figures (`run_all.sh` runs them in order) |
+| `tests/` | unit tests for prompts, answer parsing, path extraction, ranking and metrics (`pytest tests`; needs `pytest` and `requirements-graph.txt`) |
+| `data/evaluation/ratio10/test_yr<Y>/` | candidate set for year *Y* (`trial_entry_ratio10.csv.gz`), its summary (`stats.json`) and the queries dropped for having too few negatives (`dropped_queries.csv`) |
+| `data/predictions/` | the model outputs behind every result in the paper. For each candidate: label, p(Yes), and the log-probabilities of Yes and No. For each query: the MRR recorded at inference time |
+| `data/opentargets_min/` | therapeutic areas of the evaluated diseases, and the Open Targets clinical-precedence records of the positive pairs |
+| `data/aggregates/genetic_scores.csv.gz` | genetic-association evidence for each pair at *C* (Table 4) |
+| `data/aggregates/own_edge_disclosure.csv` | per year, the share of positives and negatives whose A2 or A3 paths contain the pair's own trial edge |
 
-The K-path caches (about 2.6 GB) and the graph snapshots are not in the repository.
+The graph snapshots and the cached paths (about 2.6 GB) are not included. Steps 1 and 4 below rebuild
+them.
 
-## Rerun the pipeline
+## Rerunning the full pipeline
 
-| Step | Command | Needs |
+| Step | Command | Requires |
 |---|---|---|
 | 1. Graph snapshots | `SOURCE_GRAPH=... bash scripts/build_snapshots.sh` | the full THBKG graph |
-| 2. Candidate sets | `python scripts/build_ratio_eval.py --split test --years 2021 2022 2023 2024 2025`, then the same command with `--years 2026` | Open Targets 26.03 evidence-dated layer (`OT_DIR`), `snapshot_2015` |
+| 2. Candidate sets | `python scripts/build_ratio_eval.py --split test --years 2021 2022 2023 2024 2025`, then the same command with `--years 2026` | the evidence-dated layer of Open Targets 26.03 (set `OT_DIR`); `snapshot_2015`, used only for its list of target and disease nodes |
 | 3. Identifiers-only sets (A0) | `python scripts/make_ids_sets.py` | step 2 |
-| 4. K-path caches | `OT_DIR=... ARM=A2 bash scripts/build_kpaths.sh`, then the same with `ARM=A3` | steps 1–2; 13–26 CPU-hours per arm |
-| 5. Inference | `MODEL=... SLUG=... ARM=A0\|A1\|A2\|A3 bash scripts/run_inference.sh` | one A100 80 GB; about 163 GPU-hours for all runs |
-| 6. Tables and figures | `bash analysis/run_all.sh` | step 5 outputs in `results/` (read in place of the shipped copy) |
+| 4. Path caches | `OT_DIR=... ARM=A2 bash scripts/build_kpaths.sh`, then the same with `ARM=A3` | steps 1–2; 13–26 CPU-hours per condition |
+| 5. Inference | `MODEL=... SLUG=... ARM=A0\|A1\|A2\|A3 bash scripts/run_inference.sh` | one 80 GB A100; about 163 GPU-hours for all runs |
+| 6. Tables and figures | `bash analysis/run_all.sh` | step 5 |
 
-`scripts/run_inference.sh` lists the model revisions and the exact arguments of every run.
+`scripts/run_inference.sh` lists the pinned model revisions and the exact arguments of every run. Its
+outputs go to `results/`. When `results/` exists, step 6 reads it instead of `data/predictions/`.
 
-Step 2 must build 2026 in a separate call, as in the paper. A single seeded generator is shared across the
-years of one call, so building all six years at once gives different 2026 negatives.
+In step 2, build 2026 in its own call, as we did for the paper. All years in one call share a single
+seeded random generator, so building the six years together draws different negatives for 2026.
 
-## Notes on the runs reported in the paper
+## Known differences and limitations
 
-- **A3 path annotations.** A2 strips the `[score=…]` annotation from each path edge, but A3 shows it
-  (`src/reasoning/prompts.py`: `strip_scores = (ablation == "A2")`), so A3 − A2 combines the newest
-  graph with the visible scores (paper, Appendices B and D).
-- **Stated dates.** The A0 and A1 prompts state "December 2023" as the knowledge date for every model and
-  year. A2 states December of *C*; A3 states December 2026.
-- **Not reproduced here.**
-  - The precision check (llama.cpp Q4_K_M against transformers, at most 0.019 AUROC) comes from earlier
-    runs on the reviewed version's sets with a separate llama.cpp pipeline.
-  - The package versions of the inference environment at run time were not recorded; `pyproject.toml`
-    lists that environment's versions today.
-- **Snapshots.** The 2020–2024 snapshots were sliced from an earlier build of the THBKG graph than
-  2025–2026. Re-slicing today's graph may differ slightly.
+- A3 prompts show an evidence-score annotation on each path edge (`--relation[score=0.84]-->`), and A2
+  prompts strip it (`strip_scores = (ablation == "A2")` in `src/reasoning/prompts.py`). The forecasting
+  gap A3 − A2 therefore combines the newer graph with the visible scores (paper, Appendices B and D).
+- The prompts state a knowledge date. A0 and A1 state December 2023 for every model and year, A2 states
+  December of *C*, and A3 states December 2026.
+- The paper's precision check (llama.cpp Q4_K_M against transformers, at most 0.019 AUROC; Appendix I)
+  cannot be rerun from this repository. It used earlier runs on the submitted version's candidate sets
+  and a separate llama.cpp pipeline.
+- The package versions of the inference environment were not recorded at run time.
+  `requirements-inference.txt` lists the versions in that environment today.
+- The 2020–2024 snapshots were sliced from an earlier build of THBKG than the 2025 and 2026 snapshots.
+  Slicing today's graph may give slightly different snapshots.
 
 ## Data licences and attribution
 

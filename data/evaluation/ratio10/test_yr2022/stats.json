@@ -1,0 +1,15 @@
+{
+  "split": "test",
+  "year": 2022,
+  "cutoff_year": 2021,
+  "ratio": 10,
+  "n_queries": 317,
+  "n_pos": 1781,
+  "n_neg": 17810,
+  "rows": 19591,
+  "dropped_queries": 0,
+  "dropped_pos": 0,
+  "median_pool": 1055,
+  "seed": 42,
+  "pool_def": "same-canonical-TA targets trialled by C, minus pairs trialled for d by Y"
+}

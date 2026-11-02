@@ -1,0 +1,4 @@
+# Graph snapshots, candidate sets and K-path caches (in addition to requirements.txt)
+torch>=2.7
+torch_geometric>=2.7
+networkx>=3.6

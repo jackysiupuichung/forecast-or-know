@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+# outputs and large or rebuildable data
+outputs/
+results/
+data/snapshots/
+data/aggregates/per_query.csv
+data/aggregates/per_query_single_baselines.csv
+data/aggregates/scores_long.parquet
+data/aggregates/q_full.parquet
+data/evaluation/ratio10/*/trial_entry_ratio10.csv
+data/evaluation/ratio10/*/paths
+data/evaluation/ratio10_ids/

@@ -1,0 +1,5 @@
+# Inference (in addition to requirements.txt and requirements-graph.txt). The exact versions of the
+# original runs were not recorded; these are the versions of that environment today.
+transformers==5.15.1
+accelerate==1.14.0
+bitsandbytes==0.50.1

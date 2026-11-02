@@ -1,0 +1,15 @@
+{
+  "split": "test",
+  "year": 2025,
+  "cutoff_year": 2024,
+  "ratio": 10,
+  "n_queries": 171,
+  "n_pos": 613,
+  "n_neg": 6130,
+  "rows": 6743,
+  "dropped_queries": 0,
+  "dropped_pos": 0,
+  "median_pool": 1101,
+  "seed": 42,
+  "pool_def": "same-canonical-TA targets trialled by C, minus pairs trialled for d by Y"
+}
